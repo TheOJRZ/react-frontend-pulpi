@@ -1,0 +1,34 @@
+/* Estilos de las pantallas de acceso y registro. */
+.auth-page { min-height: 100vh; width: 100%; display: grid; place-items: center; padding: 28px 16px; background: radial-gradient(circle at 12% 15%, rgba(18, 156, 103, .08), transparent 31%), radial-gradient(circle at 90% 88%, rgba(83, 174, 127, .09), transparent 30%), #f4f8f5; }
+.auth-card { width: min(100%, 430px); padding: 34px 36px 23px; border: 1px solid #e5eee8; border-radius: 20px; background: #fff; box-shadow: 0 20px 65px rgba(24, 69, 44, .08); }
+.auth-card-wide { width: min(100%, 470px); padding-top: 29px; }
+.auth-brand-mark { display: grid; place-items: center; width: 47px; height: 47px; margin: 0 auto 17px; border-radius: 15px; color: #fff; background: linear-gradient(140deg, #0a9c6a, #056b49); box-shadow: 0 7px 16px rgba(7, 134, 93, .18); font: 800 26px Manrope, sans-serif; }
+.auth-eyebrow { margin: 0 0 8px; color: #07865d; text-align: center; font-size: 9px; font-weight: 800; letter-spacing: 1.8px; }
+.auth-title { margin: 0; color: #18362a; text-align: center; font: 800 25px/1.3 Manrope, sans-serif; letter-spacing: -.7px; }
+.auth-subtitle { max-width: 330px; margin: 9px auto 24px; color: #85938b; text-align: center; font-size: 12px; line-height: 1.7; }
+.auth-form { display: grid; gap: 16px; }
+.auth-form .field-group { gap: 7px; }
+.auth-form .field-group label { font-size: 11px; color: #3d5146; }
+.auth-form .field-group input { min-height: 43px; padding: 11px 12px; border-color: #dfe8e2; border-radius: 8px; background: #fcfdfc; font-size: 12px; }
+.auth-form .field-group input::placeholder { color: #a4afa8; }
+.auth-form .field-group small { color: #92a098; font-size: 9px; line-height: 1.5; }
+.auth-form .button { margin-top: 2px; min-height: 44px; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0 12px; color: #a2aea7; font-size: 10px; }
+.auth-divider::before, .auth-divider::after { content: ''; height: 1px; flex: 1; background: #edf1ee; }
+.auth-register-prompt { margin: 0 0 10px; color: #78877e; text-align: center; font-size: 11px; }
+.register-bottom-prompt { margin-top: 20px; }
+.demo-credentials { display: grid; gap: 5px; margin-top: 20px; padding: 12px 13px; border: 1px solid #e5f0e8; border-radius: 9px; background: #f7fbf8; color: #718078; font-size: 10px; }
+.demo-credentials strong { margin-bottom: 2px; color: #2f5641; font-size: 10px; }
+.demo-credentials code { color: #087950; font: 600 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.auth-footer { margin: 20px 0 0; color: #a3aea7; text-align: center; font-size: 9px; line-height: 1.6; }
+.form-error { margin: 0; padding: 10px 11px; color: #b84747; background: #fff2f0; border: 1px solid #f5d7d3; border-radius: 7px; font-size: 11px; line-height: 1.55; }
+@media (max-width: 480px) { .auth-page { padding: 15px 10px; } .auth-card, .auth-card-wide { padding: 25px 20px 19px; border-radius: 16px; } .auth-title { font-size: 23px; } }
+/* Estilos compartidos para los campos de autenticación y formularios. */
+.auth-form .field-group input[aria-invalid="true"] { border-color: #d97870; background: #fffafa; box-shadow: 0 0 0 2px rgba(201, 81, 73, .07); }
+
+
+/* Campos auxiliares de las pantallas de categorías y auditoría. */
+.inline-checkbox { display: inline-flex; align-items: center; gap: 8px; color: #52665b; font-size: 11px; }
+.inline-checkbox input { width: 15px; height: 15px; accent-color: #087c55; }
+.audit-details { min-width: 230px; max-width: 420px; padding: 10px; border: 1px solid #e1ebe4; border-radius: 8px; background: #f8fbf9; color: #5d6f64; font-size: 10px; line-height: 1.55; }
+.audit-details pre { max-height: 220px; overflow: auto; margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 10px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
