@@ -1,5 +1,4 @@
-@'
-# Pulpi — Frontend
+# Pulpi React — Frontend Typescript
 
 Interfaz web del sistema Pulpi, desarrollada con React y TypeScript. Permite interactuar con los módulos de gestión financiera y consumir los servicios del backend mediante una API REST.
 
@@ -76,44 +75,65 @@ El frontend se comunica con el backend de Pulpi mediante solicitudes HTTP. React
 
 ```mermaid
 flowchart TD
-    U[Usuario] --> UI[Interfaz React]
-    UI --> AUTH[Autenticación y estado de sesión]
-    AUTH --> AX[Cliente HTTP Axios]
-    AX --> API[ASP.NET Core Web API]
-    API --> JWT[Validación JWT y permisos]
-    API --> DB[(SQL Server)]
-    UI --> NAV[Navegación y módulos]
-    NAV --> TRANS[Transacciones]
-    NAV --> CAJA[Sesiones de caja]
-    NAV --> CAT[Categorías]
-    NAV --> REP[Balances y reportes]
+    U["Usuario"] --> UI["Interfaz React"]
+    UI --> AUTH["Autenticación y estado de sesión"]
+    AUTH --> AX["Cliente HTTP Axios"]
+    AX --> API["ASP.NET Core Web API"]
+    API --> JWT["Validación JWT y permisos"]
+    API --> DB[("SQL Server")]
+    UI --> NAV["Navegación y módulos"]
+    NAV --> TRANS["Transacciones"]
+    NAV --> CAJA["Sesiones de caja"]
+    NAV --> CAT["Categorías"]
+    NAV --> REP["Balances y reportes"]
+```
 
-    
-Con este commit, GitHub mostrará los diagramas directamente dentro del README.
+### Flujo de autenticación
 
-## 4. Commit 3 — Instalación y ejecución
+```mermaid
+sequenceDiagram
+    actor U as Usuario
+    participant F as Frontend React
+    participant A as API Pulpi
 
-Mensaje:
+    U->>F: Introduce credenciales
+    F->>A: Solicitud de inicio de sesión
+    A-->>F: Resultado y token JWT
+    F->>A: Solicitud de perfil autenticado
+    A-->>F: Perfil y rol actual
+    F-->>U: Mostrar módulos permitidos
+    U->>F: Solicita una operación
+    F->>A: Solicitud con Bearer token
+    A-->>F: Resultado autorizado o error
+    F-->>U: Actualizar la interfaz
+```
 
-`docs: add frontend setup and API integration instructions`
+### Acceso por roles
 
-Ejecuta:
+```mermaid
+flowchart TD
+    A["Usuario autenticado"] --> B["Consultar rol y estado"]
+    B --> C{"Rol autorizado"}
+    C -->|Administrador| D["Módulos administrativos"]
+    C -->|Cajero| E["Operaciones permitidas"]
+    D --> F["Backend valida cada solicitud"]
+    E --> F
+    F --> G{"Permiso concedido"}
+    G -->|Sí| H["Procesar operación"]
+    G -->|No| I["Rechazar acceso"]
+```
 
-```powershell
-@'
+### Comunicación entre frontend y backend
 
-## Requisitos previos
+```mermaid
+flowchart LR
+    F["React y TypeScript"] -->|HTTP y JSON| API["ASP.NET Core"]
+    F -->|Bearer JWT| API
+    API --> S["Servicios del backend"]
+    S --> DB[("SQL Server")]
+    DB --> S
+    S --> API
+    API -->|JSON y código HTTP| F
+```
 
-- Node.js compatible con las dependencias del proyecto.
-- npm.
-- Git.
-- Backend de Pulpi configurado y disponible si deseas probar las operaciones integradas.
-
-## Instalación
-
-### 1. Instalar dependencias
-
-Desde la raíz del frontend:
-
-```bash
-npm install
+Los diagramas representan el flujo conceptual de la aplicación. Las rutas, los componentes y los mecanismos de autenticación deben corresponder con la implementación real del proyecto.
