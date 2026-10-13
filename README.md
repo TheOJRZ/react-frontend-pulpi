@@ -67,3 +67,23 @@ El frontend de Pulpi proporciona la interfaz de usuario para las operaciones del
 git add README.md
 git diff --cached
 git commit -m "docs: document Pulpi frontend features and technologies"
+
+@'
+
+## Arquitectura del frontend
+
+El frontend se comunica con el backend de Pulpi mediante solicitudes HTTP. React gestiona la interfaz y sus estados, mientras que el backend aplica las reglas de negocio y accede a SQL Server.
+
+```mermaid
+flowchart TD
+    U[Usuario] --> UI[Interfaz React]
+    UI --> AUTH[Autenticación y estado de sesión]
+    AUTH --> AX[Cliente HTTP Axios]
+    AX --> API[ASP.NET Core Web API]
+    API --> JWT[Validación JWT y permisos]
+    API --> DB[(SQL Server)]
+    UI --> NAV[Navegación y módulos]
+    NAV --> TRANS[Transacciones]
+    NAV --> CAJA[Sesiones de caja]
+    NAV --> CAT[Categorías]
+    NAV --> REP[Balances y reportes]
