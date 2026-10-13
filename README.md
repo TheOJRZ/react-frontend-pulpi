@@ -87,3 +87,33 @@ flowchart TD
     NAV --> CAJA[Sesiones de caja]
     NAV --> CAT[Categorías]
     NAV --> REP[Balances y reportes]
+
+    
+Con este commit, GitHub mostrará los diagramas directamente dentro del README.
+
+## 4. Commit 3 — Instalación y ejecución
+
+Mensaje:
+
+`docs: add frontend setup and API integration instructions`
+
+Ejecuta:
+
+```powershell
+@'
+
+## Requisitos previos
+
+- Node.js compatible con las dependencias del proyecto.
+- npm.
+- Git.
+- Backend de Pulpi configurado y disponible si deseas probar las operaciones integradas.
+
+## Instalación
+
+### 1. Instalar dependencias
+
+Desde la raíz del frontend:
+
+```bash
+npm install
