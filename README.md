@@ -61,13 +61,6 @@ El frontend de Pulpi proporciona la interfaz de usuario para las operaciones del
 
 - Frontend: https://github.com/TheOJRZ/react-frontend-pulpi
 - Backend: https://github.com/angelbarreto46u/webapi-restful-backend-pulpi
-'@ | Set-Content README.md -Encoding utf8
-
-git add README.md
-git diff --cached
-git commit -m "docs: document Pulpi frontend features and technologies"
-
-@'
 
 ## Arquitectura del frontend
 
