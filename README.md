@@ -1,38 +1,69 @@
-# Pulpi Finanzas — React + TypeScript
+@'
+# Pulpi — Frontend
 
-Frontend de Pulpi conectado a la API REST ASP.NET Core y SQL Server.
+Interfaz web del sistema Pulpi, desarrollada con React y TypeScript. Permite interactuar con los módulos de gestión financiera y consumir los servicios del backend mediante una API REST.
 
-## Requisitos
+## Funcionalidades
 
-- Node.js 20 o posterior.
-- API Pulpi en ejecución (por defecto `http://localhost:5266`).
+### Autenticación
+- Interfaz de inicio de sesión.
+- Registro de usuarios.
+- Gestión del estado de autenticación.
+- Integración con autenticación mediante JWT.
+- Consulta y validación del perfil de usuario a través del backend.
 
-## Configuración local
+### Panel principal
+- Navegación entre los módulos de la aplicación.
+- Presentación de información según los permisos del usuario.
+- Acceso a las operaciones administrativas y de caja autorizadas.
 
-```powershell
-Copy-Item .env.example .env
-npm ci
-npm run dev
-```
+### Transacciones
+- Registro y consulta de ingresos y gastos.
+- Selección de categorías.
+- Validación de montos, fechas y campos requeridos.
+- Asociación de movimientos con usuarios y sesiones de caja.
 
-Abre `http://localhost:5173`. Si la API usa otra dirección, cambia `VITE_API_URL` en `.env` y reinicia Vite. La variable debe apuntar al prefijo `/api`, por ejemplo `VITE_API_URL=http://localhost:5266/api`.
+### Categorías
+- Consulta de categorías.
+- Creación, edición y desactivación de categorías según los permisos disponibles.
 
-## Compilar y revisar
+### Sesiones de caja
+- Apertura y cierre de caja.
+- Consulta de sesiones autorizadas.
+- Presentación del resultado del cierre según los datos recibidos del backend.
 
-```powershell
-npm run build
-npm run lint
-```
+### Balances y reportes
+- Consulta de información financiera permitida por el rol.
+- Acceso a reportes administrativos cuando el usuario cuenta con autorización.
 
-## Inicio de sesión y permisos
+### Usuarios y roles
+- Consulta de información del usuario autenticado.
+- Presentación de opciones administrativas según los permisos.
+- Restricción de módulos de acuerdo con el rol asignado en el backend.
 
-Al recargar la página, el frontend valida el JWT mediante `GET /api/auth/me` y actualiza el rol y el perfil con los datos actuales del backend. Si el token ha expirado, la cuenta fue desactivada o la API responde `401`, se limpia la sesión local y se muestra el inicio de sesión. Durante una sesión activa, el perfil se vuelve a sincronizar periódicamente; los permisos definitivos siempre los impone el backend.
+## Tecnologías
 
-- **Administrador**: acceso a transacciones globales, sesiones de caja, categorías, balances, reportes, auditoría y usuarios/roles.
-- **Cajero**: acceso a sus transacciones y sesiones de caja; no se muestran balances, reportes, auditoría ni administración de usuarios/categorías.
+| Tecnología | Uso |
+|---|---|
+| React 19 | Construcción de interfaces |
+| TypeScript 5.8 | Tipado estático |
+| Vite 6 | Servidor de desarrollo y compilación |
+| CSS | Estilos de la interfaz |
+| Axios | Comunicación HTTP con la API |
+| React Router DOM | Navegación entre vistas, si está configurada |
+| Lucide React | Iconografía |
+| JWT | Autenticación con el backend |
 
-Las categorías se cargan desde la API, no desde un arreglo estático del frontend. Los IDs son generados por la base de datos; no se solicitan ni se editan al crear registros.
+## Objetivo
 
-## Primer administrador
+El frontend de Pulpi proporciona la interfaz de usuario para las operaciones del sistema. La autenticación, la persistencia de datos y la autorización definitiva deben gestionarse y validarse en el backend.
 
-El registro público asigna siempre el rol Cajero. Para inicializar un administrador, siga el procedimiento `scripts/asignar-administrador-inicial.sql` de la carpeta del backend y vuelva a iniciar sesión después de ejecutar el script.
+## Repositorios relacionados
+
+- Frontend: https://github.com/TheOJRZ/react-frontend-pulpi
+- Backend: https://github.com/angelbarreto46u/webapi-restful-backend-pulpi
+'@ | Set-Content README.md -Encoding utf8
+
+git add README.md
+git diff --cached
+git commit -m "docs: document Pulpi frontend features and technologies"
