@@ -64,6 +64,7 @@ export interface CashSession {
   difference?: number
   status: CashSessionStatus
   observations?: string
+  currentBalance?: number
 }
 
 export interface AuditAction {
