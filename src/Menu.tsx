@@ -224,7 +224,6 @@ function TransactionModal({
     aria-readonly="true"
   />
 
-  
 </div>
       </div>
       <div className="form-two-columns">
