@@ -61,7 +61,6 @@ export interface CashSession {
   closedAt?: string
   expectedBalance?: number
   declaredBalance?: number
-  difference?: number
   status: CashSessionStatus
   observations?: string
   currentBalance?: number

@@ -367,10 +367,6 @@ function mapSession(value: unknown): CashSession {
       ? undefined
       : asNumber(dto.saldoDeclarado),
 
-    difference: dto.diferencia == null
-      ? undefined
-      : asNumber(dto.diferencia),
-
     status: asString(
       dto.estado,
       'ABIERTA'
@@ -643,16 +639,26 @@ export async function openCashSession(input: {
 export async function closeCashSession(
   id: string,
   input: {
+    declaredBalance: number
     observations: string
   }
 ): Promise<CashSession> {
+  if (
+    !id.trim() ||
+    !Number.isFinite(input.declaredBalance) ||
+    input.declaredBalance < 0
+  ) {
+    throw new Error('Los datos de cierre de caja no son válidos.')
+  }
+
   return mapSession(
     await request(
       `/sesionescaja/${encodeURIComponent(id)}/cerrar`,
       {
         method: 'POST',
         body: JSON.stringify({
-          observaciones: input.observations
+          saldoDeclarado: input.declaredBalance,
+          observaciones: input.observations.trim()
         })
       }
     )

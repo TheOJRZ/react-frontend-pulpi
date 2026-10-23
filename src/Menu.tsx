@@ -21,7 +21,12 @@ import {
   updateUserRole as updateUserRoleApi,
   updateUserStatus,
 } from './api'
-import { formatCurrency, formatDate, localDateString } from './storage'
+import {
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+  localDateString,
+} from './storage'
 import type { AuditAction, BalanceSummary, CashSession, Category, CategoryInput, ReportSummary, Transaction, TransactionInput, TransactionType, User, UserRole } from './types'
 
 type Page = 'inicio' | 'transacciones' | 'caja' | 'balances' | 'categorias' | 'reportes' | 'auditoria' | 'configuracion'
@@ -58,6 +63,29 @@ function exportTransactionsCsv(transactions: Transaction[], filename: string) {
   downloadFile(filename, '\uFEFF' + rows.map((row) => row.map(csvCell).join(';')).join('\r\n'), 'text/csv;charset=utf-8;')
 }
 
+function calculateExpectedCash(
+  session: CashSession,
+  transactions: Transaction[]
+): number {
+  const total = transactions.reduce((balance, transaction) => {
+    if (
+      transaction.sessionId !== session.id ||
+      transaction.state !== 'REGISTRADA' ||
+      transaction.paymentMethod.trim().toLowerCase() !== 'efectivo'
+    ) {
+      return balance
+    }
+
+    return balance + (
+      transaction.type === 'income'
+        ? transaction.amount
+        : -transaction.amount
+    )
+  }, session.initialBalance)
+
+  return Math.round((total + Number.EPSILON) * 100) / 100
+}
+
 function ModalShell({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return <div className="modal-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
     <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
@@ -77,11 +105,10 @@ function TransactionModal({
   const [description, setDescription] = useState(initial?.description ?? '')
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? '')
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
-  const [date, setDate] = useState(initial?.date ?? localDateString())
+  const date = initial?.date ?? localDateString()
   const [paymentMethod, setPaymentMethod] = useState(initial?.paymentMethod ?? PAYMENT_METHODS[0])
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [futureConfirmed, setFutureConfirmed] = useState(false)
   const availableCategories = useMemo(() => categories.filter((item) => item.active && item.type === type), [categories, type])
 
   useEffect(() => {
@@ -89,19 +116,71 @@ function TransactionModal({
   }, [availableCategories, categoryId])
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const numericAmount = Number(amount)
-    if (description.trim().length < 2) { setError('La descripción debe tener al menos 2 caracteres.'); return }
-    if (!amount.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) { setError('El monto debe ser un número mayor que cero.'); return }
-    if (!date || Number.isNaN(new Date(`${date}T12:00:00`).getTime())) { setError('Selecciona una fecha válida.'); return }
-    if (!availableCategories.some((item) => item.id === categoryId)) { setError(`Selecciona una categoría activa de tipo ${type === 'income' ? 'Ingreso' : 'Gasto'}.`); return }
-    if (date > localDateString() && !futureConfirmed) { setFutureConfirmed(true); setError('La fecha es futura. Verifica que sea correcta y pulsa Guardar otra vez para confirmar.'); return }
-    setError(''); setSaving(true)
-    try {
-      const saved = await onSave({ type, categoryId, description: description.trim(), amount: numericAmount, date, paymentMethod })
-      if (!saved) setError('No se pudo guardar la transacción. Revisa el aviso y vuelve a intentarlo.')
-    } finally { setSaving(false) }
+  event.preventDefault()
+
+  const numericAmount = Number(amount)
+
+  // Para una transacción nueva, siempre se utiliza la fecha
+  // actual de Nicaragua. Al editar, se conserva la original.
+  const movementDate = initial?.date ?? localDateString()
+
+  if (description.trim().length < 2) {
+    setError(
+      `La descripción del ${type === 'income' ? 'ingreso' : 'egreso'} debe tener al menos 2 caracteres.`
+    )
+    return
   }
+
+  if (
+    !amount.trim() ||
+    !Number.isFinite(numericAmount) ||
+    numericAmount <= 0
+  ) {
+    setError('El monto debe ser un número mayor que cero.')
+    return
+  }
+
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(movementDate) ||
+    Number.isNaN(
+      new Date(`${movementDate}T12:00:00Z`).getTime()
+    )
+  ) {
+    setError('No se pudo determinar una fecha válida.')
+    return
+  }
+
+  if (!availableCategories.some((item) => item.id === categoryId)) {
+    setError(
+      `Selecciona una categoría activa de tipo ${
+        type === 'income' ? 'Ingreso' : 'Egreso'
+      }.`
+    )
+    return
+  }
+
+  setError('')
+  setSaving(true)
+
+  try {
+    const saved = await onSave({
+      type,
+      categoryId,
+      description: description.trim(),
+      amount: numericAmount,
+      date: movementDate,
+      paymentMethod,
+    })
+
+    if (!saved) {
+      setError(
+        'No se pudo guardar la transacción. Revisa el aviso e inténtalo nuevamente.'
+      )
+    }
+  } finally {
+    setSaving(false)
+  }
+}
 
   return <ModalShell title={initial ? 'Editar transacción' : 'Registrar transacción'} onClose={onClose}>
     <form className="modal-form" onSubmit={submit} noValidate>
@@ -109,10 +188,44 @@ function TransactionModal({
         <button type="button" className={type === 'income' ? 'type-choice selected income-choice' : 'type-choice'} onClick={() => { setType('income'); setError('') }}>＋ Ingreso</button>
         <button type="button" className={type === 'expense' ? 'type-choice selected expense-choice' : 'type-choice'} onClick={() => { setType('expense'); setError('') }}>− Egreso</button>
       </div>
-      <div className="field-group"><label htmlFor="transactionDescription">Descripción</label><input id="transactionDescription" value={description} onChange={(e) => setDescription(e.target.value)} minLength={2} maxLength={150} required placeholder="Ej. Venta del mostrador" /></div>
+      <div className="field-group">
+  <label htmlFor="transactionDescription">
+    Descripción
+  </label>
+
+  <input
+    id="transactionDescription"
+    value={description}
+    onChange={(event) => setDescription(event.target.value)}
+    minLength={2}
+    maxLength={150}
+    required
+    placeholder={
+      type === 'income'
+        ? 'Ej. Venta del mostrador'
+        : 'Ej. Compra de mercadería o pago a proveedor'
+    }
+  />
+</div>
       <div className="form-two-columns">
         <div className="field-group"><label htmlFor="transactionAmount">Monto (C$)</label><input id="transactionAmount" type="number" min="0.01" max="9999999999999999" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required placeholder="0.00" /></div>
-        <div className="field-group"><label htmlFor="transactionDate">Fecha del movimiento</label><input id="transactionDate" type="date" value={date} onChange={(e) => { setDate(e.target.value); setFutureConfirmed(false); setError('') }} required /></div>
+        <div className="field-group">
+  <label htmlFor="transactionDate">
+    {initial
+      ? 'Fecha del movimiento'
+      : 'Fecha de hoy (Nicaragua)'}
+  </label>
+
+  <input
+    id="transactionDate"
+    type="text"
+    value={formatDate(date)}
+    readOnly
+    aria-readonly="true"
+  />
+
+  
+</div>
       </div>
       <div className="form-two-columns">
         <div className="field-group"><label htmlFor="transactionCategory">Categoría</label><select id="transactionCategory" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} required><option value="">Selecciona categoría</option>{availableCategories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{availableCategories.length === 0 && <small>No hay categorías activas de este tipo. Solicita al administrador que agregue una.</small>}</div>
@@ -150,27 +263,130 @@ function CategoryModal({ initial, onClose, onSave }: { initial: Category | null;
   </ModalShell>
 }
 
-function CloseSessionModal({ session, onClose, onSave }: { session: CashSession; onClose: () => void; onSave: (session: CashSession, declaredBalance: number, observations: string) => Promise<boolean> }) {
-  const [balance, setBalance] = useState('')
+function CloseSessionModal({
+  session,
+  transactions,
+  onClose,
+  onSave,
+}: {
+  session: CashSession
+  transactions: Transaction[]
+  onClose: () => void
+  onSave: (
+    session: CashSession,
+    declaredBalance: number,
+    observations: string
+  ) => Promise<boolean>
+}) {
+  const expectedBalance = useMemo(
+    () => calculateExpectedCash(session, transactions),
+    [session, transactions]
+  )
+
   const [observations, setObservations] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); const amount = Number(balance)
-    if (!balance.trim() || !Number.isFinite(amount) || amount < 0) { setError('Introduce el efectivo contado; debe ser un valor numérico igual o mayor que cero.'); return }
-    setBusy(true); setError('')
-    try { if (!(await onSave(session, amount, observations.trim()))) setError('No se pudo cerrar la sesión de caja.') }
-    finally { setBusy(false) }
+    event.preventDefault()
+
+    setBusy(true)
+    setError('')
+
+    try {
+      const saved = await onSave(
+        session,
+        expectedBalance,
+        observations.trim()
+      )
+
+      if (!saved) {
+        setError('No se pudo cerrar la sesión de caja. Revisa el mensaje mostrado e inténtalo nuevamente.')
+      }
+    } finally {
+      setBusy(false)
+    }
   }
-  return <ModalShell title="Cerrar sesión de caja" onClose={onClose}>
-    <form className="modal-form" onSubmit={submit} noValidate>
-      <p>Sesión abierta por <strong>{session.openerName}</strong> desde {formatDate(session.openedAt)}.</p>
-      <div className="field-group"><label htmlFor="declaredBalance">Efectivo contado (C$)</label><input id="declaredBalance" type="number" min="0" step="0.01" value={balance} onChange={(e) => setBalance(e.target.value)} required placeholder="0.00" /></div>
-      <div className="field-group"><label htmlFor="closingObservations">Observaciones (opcional)</label><textarea id="closingObservations" rows={3} maxLength={250} value={observations} onChange={(e) => setObservations(e.target.value)} placeholder="Anota cualquier diferencia o incidencia" /></div>
-      {error && <p className="form-error" role="alert">{error}</p>}
-      <div className="modal-actions"><button className="button button-secondary" type="button" onClick={onClose}>Cancelar</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? 'Cerrando…' : 'Confirmar cierre'}</button></div>
-    </form>
-  </ModalShell>
+
+  return (
+    <ModalShell
+      title="Cerrar sesión de caja"
+      onClose={onClose}
+    >
+      <form
+        className="modal-form"
+        onSubmit={submit}
+        noValidate
+      >
+        <p>
+          Sesión abierta por{' '}
+          <strong>{session.openerName}</strong>{' '}
+          desde {formatDate(session.openedAt)}.
+        </p>
+
+        <div className="field-group">
+          <label htmlFor="declaredBalance">
+            Efectivo contado (C$)
+          </label>
+
+          <input
+            id="declaredBalance"
+            type="text"
+            inputMode="decimal"
+            value={expectedBalance.toFixed(2)}
+            readOnly
+            aria-readonly="true"
+          />
+
+          <small>
+            Saldo inicial más ingresos en efectivo menos egresos
+            en efectivo registrados en esta sesión.
+          </small>
+        </div>
+
+        <div className="field-group">
+          <label htmlFor="closingObservations">
+            Observaciones (opcional)
+          </label>
+
+          <textarea
+            id="closingObservations"
+            rows={3}
+            maxLength={250}
+            value={observations}
+            onChange={(event) =>
+              setObservations(event.target.value)
+            }
+            placeholder="Anota cualquier incidencia"
+          />
+        </div>
+
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+
+        <div className="modal-actions">
+          <button
+            className="button button-secondary"
+            type="button"
+            onClick={onClose}
+          >
+            Cancelar
+          </button>
+
+          <button
+            className="button button-primary"
+            type="submit"
+            disabled={busy}
+          >
+            {busy ? 'Cerrando…' : 'Confirmar cierre'}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
+  )
 }
 
 function Menu({ user, onLogout, onUserUpdate }: MenuProps) {
@@ -312,6 +528,25 @@ function Menu({ user, onLogout, onUserUpdate }: MenuProps) {
     } catch (error) { showNotice(error instanceof Error ? error.message : 'No se pudo cambiar el estado de la categoría.', 'error') }
   }
 
+  const openCloseSessionModal = async (
+  session: CashSession
+) => {
+  try {
+    const latestTransactions = await getTransactions()
+
+    setTransactions(latestTransactions)
+    setSessionToClose(session)
+  } catch (error) {
+    showNotice(
+      error instanceof Error
+        ? error.message
+        : 'No se pudieron actualizar los movimientos de caja.',
+      'error'
+    )
+  }
+}
+
+
   const handleOpenSession = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const amount = Number(sessionOpenAmount)
@@ -325,16 +560,49 @@ function Menu({ user, onLogout, onUserUpdate }: MenuProps) {
     finally { setSessionOpenBusy(false) }
   }
 
-  const handleCloseSession = async (session: CashSession, declaredBalance: number, observations: string): Promise<boolean> => {
-    try {
-      const closed = await closeCashSession(session.id, { declaredBalance, observations })
-      setSessionToClose(null)
-      await reloadCoreData()
-      const delta = closed.difference ?? 0
-      showNotice(delta === 0 ? 'Caja cerrada: el efectivo contado coincide con el saldo esperado.' : `Caja cerrada. Diferencia registrada: ${formatCurrency(delta)}.`, delta === 0 ? 'success' : 'warning')
-      return true
-    } catch (error) { showNotice(error instanceof Error ? error.message : 'No se pudo cerrar la caja.', 'error'); return false }
+  const handleCloseSession = async (
+  session: CashSession,
+  declaredBalance: number,
+  observations: string
+): Promise<boolean> => {
+  let closed: CashSession
+
+  try {
+    closed = await closeCashSession(session.id, {
+      declaredBalance,
+      observations
+    })
+  } catch (error) {
+    showNotice(
+      error instanceof Error
+        ? error.message
+        : 'No se pudo cerrar la caja.',
+      'error'
+    )
+
+    return false
   }
+
+  setSessionToClose(null)
+
+  const finalBalance =
+    closed.expectedBalance ?? declaredBalance
+
+  try {
+    await reloadCoreData()
+
+    showNotice(
+      `Caja cerrada correctamente. Saldo final: ${formatCurrency(finalBalance)}.`
+    )
+  } catch {
+    showNotice(
+      `La caja se cerró correctamente con un saldo de ${formatCurrency(finalBalance)}, pero no se pudo actualizar toda la pantalla. Recarga los datos.`,
+      'warning'
+    )
+  }
+
+  return true
+}
 
   const consultReport = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -403,7 +671,7 @@ function Menu({ user, onLogout, onUserUpdate }: MenuProps) {
     <section className="welcome-panel"><div><p className="section-overline">{isAdmin ? 'PANEL ADMINISTRATIVO' : 'TURNO DE CAJA'}</p><h1>Hola, {user.fullName.split(' ')[0]} <span aria-hidden="true">👋</span></h1><p>{isAdmin ? 'Consulta la actividad financiera consolidada de todos los usuarios.' : 'Aquí puedes consultar tus movimientos y administrar tu sesión de caja.'}</p></div><button className="button button-primary" type="button" onClick={() => currentSession ? openTransactionModal() : navigate('caja')} disabled={initialLoading}>{currentSession ? '＋ Registrar transacción' : 'Abrir caja para iniciar'}</button></section>
     {isAdmin ? <>
       <section className="kpi-grid" aria-label="Resumen financiero"><article className="kpi-card"><div className="kpi-head"><span>Balance neto</span><span className="kpi-icon icon-green">↗</span></div><strong className={`kpi-value ${(balanceSummary?.netBalance ?? 0) < 0 ? 'negative-amount' : ''}`}>{formatCurrency(balanceSummary?.netBalance ?? 0)}</strong><span className="kpi-description">Ingresos menos egresos de todos los usuarios</span></article><article className="kpi-card"><div className="kpi-head"><span>Ingresos acumulados</span><span className="kpi-icon icon-blue">＋</span></div><strong className="kpi-value">{formatCurrency(balanceSummary?.totalIncome ?? 0)}</strong><span className="kpi-description">Movimientos registrados</span></article><article className="kpi-card"><div className="kpi-head"><span>Egresos acumulados</span><span className="kpi-icon icon-orange">−</span></div><strong className="kpi-value">{formatCurrency(balanceSummary?.totalExpenses ?? 0)}</strong><span className="kpi-description">Movimientos registrados</span></article><article className="kpi-card"><div className="kpi-head"><span>Transacciones activas</span><span className="kpi-icon icon-purple">↔</span></div><strong className="kpi-value">{balanceSummary?.totalTransactions ?? transactions.length}</strong><span className="kpi-description">De todas las cuentas</span></article></section>
-    </> : <section className="panel-card"><div className="panel-heading"><div><h2>Mi sesión de caja</h2><p>Solo se muestra la información asociada a tu cuenta.</p></div><span className={`status-pill ${currentSession ? 'status-income' : 'status-expense'}`}>{currentSession ? 'ABIERTA' : 'SIN ABRIR'}</span></div>{currentSession ? <div className="session-summary-grid"><div><span>Saldo inicial</span><strong>{formatCurrency(currentSession.initialBalance)}</strong></div><div><span>Apertura</span><strong>{new Date(currentSession.openedAt).toLocaleString('es-NI')}</strong></div><div><span>Movimientos de este turno</span><strong>{transactions.filter((t) => t.sessionId === currentSession.id).length}</strong></div></div> : <p className="muted-empty">Debes abrir tu caja antes de registrar nuevas transacciones.</p>}<button className="button button-secondary" type="button" onClick={() => navigate('caja')}>{currentSession ? 'Ver sesión de caja' : 'Abrir sesión de caja'}</button></section>}
+    </> : <section className="panel-card"><div className="panel-heading"><div><h2>Mi sesión de caja</h2><p>Solo se muestra la información asociada a tu cuenta.</p></div><span className={`status-pill ${currentSession ? 'status-income' : 'status-expense'}`}>{currentSession ? 'ABIERTA' : 'SIN ABRIR'}</span></div>{currentSession ? <div className="session-summary-grid"><div><span>Saldo inicial</span><strong>{formatCurrency(currentSession.initialBalance)}</strong></div><div><span>Apertura</span><strong>{formatDateTime(currentSession.openedAt)}</strong></div><div><span>Movimientos de este turno</span><strong>{transactions.filter((t) => t.sessionId === currentSession.id).length}</strong></div></div> : <p className="muted-empty">Debes abrir tu caja antes de registrar nuevas transacciones.</p>}<button className="button button-secondary" type="button" onClick={() => navigate('caja')}>{currentSession ? 'Ver sesión de caja' : 'Abrir sesión de caja'}</button></section>}
     <section className="panel-card"><div className="panel-heading"><div><h2>Movimientos recientes</h2><p>{isAdmin ? 'Últimas transacciones del sistema' : 'Últimas transacciones registradas por ti'}</p></div><button className="link-button" type="button" onClick={() => navigate('transacciones')}>Ver todas →</button></div>{transactionsNewestFirst.length ? renderTransactionTable(transactionsNewestFirst.slice(0, 6), true) : <EmptyState title="Todavía no hay movimientos" detail={currentSession ? 'Registra tu primer ingreso o egreso.' : 'Abre una sesión de caja para comenzar.'} />}</section>
   </>
 
@@ -415,11 +683,208 @@ function Menu({ user, onLogout, onUserUpdate }: MenuProps) {
   </>
 
   const renderCashSessions = () => <>
-    <section className="page-title-row"><div><p className="section-overline">CONTROL DE EFECTIVO</p><h1>Sesiones de caja</h1><p>Abre la caja al iniciar el turno y registra el efectivo contado al cerrarlo.</p></div></section>
-    {currentSession ? <section className="panel-card"><div className="panel-heading"><div><h2>Tu sesión actual</h2><p>Abierta el {new Date(currentSession.openedAt).toLocaleString('es-NI')}</p></div><span className="status-pill status-income">ABIERTA</span></div><div className="session-summary-grid"><div><span>Saldo inicial</span><strong>{formatCurrency(currentSession.initialBalance)}</strong></div><div><span>Movimientos del turno</span><strong>{transactions.filter((item) => item.sessionId === currentSession.id).length}</strong></div><div><span>Responsable</span><strong>{currentSession.openerName || user.fullName}</strong></div></div><button className="button button-primary" type="button" onClick={() => setSessionToClose(currentSession)}>Contar efectivo y cerrar caja</button></section>
-      : <section className="panel-card"><div className="panel-heading"><div><h2>Apertura de caja</h2><p>Registra el efectivo real que hay al empezar el turno.</p></div></div><form className="modal-form inline-session-form" onSubmit={handleOpenSession} noValidate><div className="field-group"><label htmlFor="openingBalance">Saldo inicial (C$)</label><input id="openingBalance" type="number" min="0" step="0.01" value={sessionOpenAmount} onChange={(e) => setSessionOpenAmount(e.target.value)} required placeholder="0.00" /></div><div className="field-group"><label htmlFor="openingNotes">Observaciones (opcional)</label><input id="openingNotes" value={sessionOpenNotes} onChange={(e) => setSessionOpenNotes(e.target.value)} maxLength={250} placeholder="Efectivo con el que inicia el turno" /></div><button className="button button-primary" type="submit" disabled={sessionOpenBusy}>{sessionOpenBusy ? 'Abriendo…' : 'Abrir caja'}</button></form></section>}
-    <section className="panel-card"><div className="panel-heading"><div><h2>{isAdmin ? 'Historial de todas las cajas' : 'Mi historial de caja'}</h2><p>{isAdmin ? 'Sesiones abiertas y cerradas de todos los usuarios.' : 'Solo tus sesiones de caja.'}</p></div></div>{sessions.length ? <div className="table-scroll"><table className="data-table"><thead><tr><th>Apertura</th>{isAdmin && <th>Usuario</th>}<th>Saldo inicial</th><th>Estado</th><th>Saldo esperado</th><th>Saldo declarado</th><th>Diferencia</th>{isAdmin && <th>Acción</th>}</tr></thead><tbody>{sessions.map((session) => <tr key={session.id}><td>{new Date(session.openedAt).toLocaleString('es-NI')}</td>{isAdmin && <td>{session.openerName}</td>}<td className="numeric-cell">{formatCurrency(session.initialBalance)}</td><td><span className={`status-pill ${session.status === 'ABIERTA' ? 'status-income' : 'status-expense'}`}>{session.status}</span></td><td className="numeric-cell">{session.expectedBalance == null ? '—' : formatCurrency(session.expectedBalance)}</td><td className="numeric-cell">{session.declaredBalance == null ? '—' : formatCurrency(session.declaredBalance)}</td><td className="numeric-cell">{session.difference == null ? '—' : formatCurrency(session.difference)}</td>{isAdmin && <td>{session.status === 'ABIERTA' ? <button type="button" className="text-action" onClick={() => setSessionToClose(session)}>Cerrar sesión</button> : '—'}</td>}</tr>)}</tbody></table></div> : <EmptyState title="Todavía no hay sesiones" detail="Abre tu primera sesión de caja para comenzar." />}</section>
-  </>
+  <section className="page-title-row">
+    <div>
+      <p className="section-overline">CONTROL DE EFECTIVO</p>
+      <h1>Sesiones de caja</h1>
+      <p>
+        Consulta el saldo de la sesión y ciérrala cuando termines
+        el turno.
+      </p>
+    </div>
+  </section>
+
+  {currentSession ? (
+    <section className="panel-card">
+      <div className="panel-heading">
+        <div>
+          <h2>Tu sesión actual</h2>
+          <p>
+            Abierta el{' '}
+            {new Date(currentSession.openedAt).toLocaleString('es-NI')}
+          </p>
+        </div>
+
+        <span className="status-pill status-income">
+          ABIERTA
+        </span>
+      </div>
+
+      <div className="session-summary-grid">
+        <div>
+          <span>Saldo inicial</span>
+          <strong>
+            {formatCurrency(currentSession.initialBalance)}
+          </strong>
+        </div>
+
+        <div>
+          <span>Movimientos del turno</span>
+          <strong>
+            {transactions.filter(
+              (item) => item.sessionId === currentSession.id
+            ).length}
+          </strong>
+        </div>
+
+        <div>
+          <span>Responsable</span>
+          <strong>
+            {currentSession.openerName || user.fullName}
+          </strong>
+        </div>
+      </div>
+
+      <button
+        className="button button-primary"
+        type="button"
+        onClick={() => void openCloseSessionModal(currentSession)}
+      >
+        Revisar saldo y cerrar caja
+      </button>
+    </section>
+  ) : (
+    <section className="panel-card">
+      <div className="panel-heading">
+        <div>
+          <h2>Apertura de caja</h2>
+          <p>Registra el efectivo con el que inicia el turno.</p>
+        </div>
+      </div>
+
+      <form
+        className="modal-form inline-session-form"
+        onSubmit={handleOpenSession}
+        noValidate
+      >
+        <div className="field-group">
+          <label htmlFor="openingBalance">
+            Saldo inicial (C$)
+          </label>
+
+          <input
+            id="openingBalance"
+            type="number"
+            min="0"
+            step="0.01"
+            value={sessionOpenAmount}
+            onChange={(event) =>
+              setSessionOpenAmount(event.target.value)
+            }
+            required
+            placeholder="0.00"
+          />
+        </div>
+
+        <div className="field-group">
+          <label htmlFor="openingNotes">
+            Observaciones (opcional)
+          </label>
+
+          <input
+            id="openingNotes"
+            value={sessionOpenNotes}
+            onChange={(event) =>
+              setSessionOpenNotes(event.target.value)
+            }
+            maxLength={250}
+            placeholder="Efectivo con el que inicia el turno"
+          />
+        </div>
+
+        <button
+          className="button button-primary"
+          type="submit"
+          disabled={sessionOpenBusy}
+        >
+          {sessionOpenBusy ? 'Abriendo…' : 'Abrir caja'}
+        </button>
+      </form>
+    </section>
+  )}
+
+  <section className="panel-card">
+    <div className="panel-heading">
+      <div>
+        <h2>
+          {isAdmin
+            ? 'Historial de todas las cajas'
+            : 'Mi historial de caja'}
+        </h2>
+
+        <p>
+          {isAdmin
+            ? 'Sesiones abiertas y cerradas de todos los usuarios.'
+            : 'Solo tus sesiones de caja.'}
+        </p>
+      </div>
+    </div>
+
+    {sessions.length ? (
+      <div className="table-scroll">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Apertura</th>
+              {isAdmin && <th>Usuario</th>}
+              <th>Saldo inicial</th>
+              <th>Estado</th>
+              <th>Saldo esperado</th>
+              <th>Saldo al cierre</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {sessions.map((session) => (
+              <tr key={session.id}>
+                <td>
+                  {formatDateTime(session.openedAt)}
+                </td>
+
+                {isAdmin && (
+                  <td>{session.openerName}</td>
+                )}
+
+                <td className="numeric-cell">
+                  {formatCurrency(session.initialBalance)}
+                </td>
+
+                <td>
+                  <span
+                    className={`status-pill ${
+                      session.status === 'ABIERTA'
+                        ? 'status-income'
+                        : 'status-expense'
+                    }`}
+                  >
+                    {session.status}
+                  </span>
+                </td>
+
+                <td className="numeric-cell">
+                  {session.expectedBalance == null
+                    ? '—'
+                    : formatCurrency(session.expectedBalance)}
+                </td>
+
+                <td className="numeric-cell">
+                  {session.declaredBalance == null
+                    ? '—'
+                    : formatCurrency(session.declaredBalance)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : (
+      <EmptyState
+        title="Todavía no hay sesiones"
+        detail="Abre tu primera sesión de caja para comenzar."
+      />
+    )}
+  </section>
+</>
 
   const renderBalances = () => <>
     <section className="page-title-row"><div><p className="section-overline">VISTA CONSOLIDADA</p><h1>Balances</h1><p>Totales acumulados de movimientos registrados de todas las cuentas.</p></div><button className="button button-secondary" type="button" onClick={() => void getBalances().then(setBalanceSummary).catch((e) => showNotice(e instanceof Error ? e.message : 'No se pudo actualizar el balance.', 'error'))}>Actualizar</button></section>
@@ -481,7 +946,14 @@ function Menu({ user, onLogout, onUserUpdate }: MenuProps) {
     </div>
     {showTransactionModal && <TransactionModal key={transactionToEdit?.id ?? 'new-transaction'} initial={transactionToEdit} categories={activeCategories} onClose={() => { setShowTransactionModal(false); setTransactionToEdit(null) }} onSave={saveTransaction} />}
     {showCategoryModal && isAdmin && <CategoryModal key={categoryToEdit?.id ?? 'new-category'} initial={categoryToEdit} onClose={() => { setShowCategoryModal(false); setCategoryToEdit(null) }} onSave={saveCategory} />}
-    {sessionToClose && <CloseSessionModal session={sessionToClose} onClose={() => setSessionToClose(null)} onSave={handleCloseSession} />}
+    {sessionToClose && (
+  <CloseSessionModal
+    session={sessionToClose}
+    transactions={transactions}
+    onClose={() => setSessionToClose(null)}
+    onSave={handleCloseSession}
+  />
+)}
     {showLogoutConfirmation && <ModalShell title="Cerrar sesión" onClose={() => setShowLogoutConfirmation(false)}><div className="logout-confirmation"><div className="logout-confirmation-icon" aria-hidden="true">↪</div><h3>¿Deseas cerrar tu sesión?</h3><p>Saldrás de Pulpi. Tus datos permanecerán guardados en el servidor.</p><div className="modal-actions logout-confirmation-actions"><button className="button button-secondary" type="button" onClick={() => setShowLogoutConfirmation(false)}>Seguir en Pulpi</button><button className="button button-primary logout-confirm-button" type="button" onClick={onLogout}>Cerrar sesión</button></div></div></ModalShell>}
   </div>
 }
